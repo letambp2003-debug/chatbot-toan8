@@ -3,6 +3,8 @@ import { decryptApiKey, COOKIE_NAME } from "@/lib/security/encryption";
 import { GEMINI_CONFIG } from "@/lib/gemini/config";
 import { getSystemKeyPoolSummary } from "@/lib/gemini/key_pool";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const cookie = req.cookies.get(COOKIE_NAME);

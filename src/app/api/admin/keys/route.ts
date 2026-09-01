@@ -3,6 +3,8 @@ import { getSystemKeyPoolSummary, addSystemKeyToPool, removeSystemKeyFromPool } 
 import { validateGoogleApiKey } from "@/lib/gemini/client";
 import { logger } from "@/lib/security/logger";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const summary = getSystemKeyPoolSummary();
