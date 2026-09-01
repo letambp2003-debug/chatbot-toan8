@@ -22,7 +22,7 @@ export function getAdminGenAIClient(): GoogleGenAI {
 }
 
 /**
- * Thực hiện kiểm tra nhẹ (lightweight validation) với các model Gemini thông dụng
+ * Thực hiện kiểm tra tính hợp lệ của API Key trực tiếp qua Google Generative Language API
  */
 export async function validateGoogleApiKey(apiKey: string): Promise<KeyValidationResult> {
   if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length < 15) {
@@ -46,97 +46,73 @@ export async function validateGoogleApiKey(apiKey: string): Promise<KeyValidatio
     };
   }
 
-  // 2. Thử các model phổ biến để tránh lỗi Model Not Found
-  const candidateModels = [
-    GEMINI_CONFIG.generationModel,
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-  ];
+  try {
+    // 2. Gọi trực tiếp endpoint models của Google AI để xác thực key 100% chuẩn xác
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`);
+    const data = await res.json();
 
-  let lastErrorDetail = "";
+    if (res.ok && Array.isArray(data.models) && data.models.length > 0) {
+      return {
+        valid: true,
+        status: 200,
+        reason: "ok",
+        message: "Kết nối Google AI thành công! Khóa API đã được kích hoạt và sẵn sàng sử dụng.",
+      };
+    }
 
-  for (const modelName of candidateModels) {
-    try {
-      const ai = new GoogleGenAI({ apiKey: cleanKey });
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: "ping",
-        config: {
-          maxOutputTokens: 1,
-        },
-      });
+    if (data.error) {
+      const code = data.error.code || res.status;
+      const msg = data.error.message || "";
+      const lowerMsg = msg.toLowerCase();
 
-      if (response && response.text !== undefined) {
-        return {
-          valid: true,
-          status: 200,
-          reason: "ok",
-          message: "Kết nối Google AI thành công.",
-        };
-      }
-    } catch (error: any) {
-      lastErrorDetail = error?.message || error?.toString() || "";
-      const errorStr = lastErrorDetail.toLowerCase();
-      const statusNum = error?.status || error?.statusCode;
-
-      // Nếu lỗi rõ ràng là sai API Key -> return ngay lập tức
-      if (
-        statusNum === 401 ||
-        errorStr.includes("api_key_invalid") ||
-        errorStr.includes("invalid api key") ||
-        errorStr.includes("unauthenticated") ||
-        errorStr.includes("api key not valid")
-      ) {
+      if (code === 400 || lowerMsg.includes("api key not valid") || lowerMsg.includes("invalid_argument")) {
         return {
           valid: false,
           status: 401,
           reason: "invalid_key",
-          message: "API key không hợp lệ hoặc đã bị thu hồi. Vui lòng kiểm tra lại trên Google AI Studio.",
+          message: "API key không hợp lệ. Bạn hãy kiểm tra lại và đảm bảo sao chép chính xác từ Google AI Studio.",
         };
       }
 
-      if (
-        statusNum === 403 ||
-        errorStr.includes("permission_denied") ||
-        errorStr.includes("forbidden") ||
-        errorStr.includes("access not configured")
-      ) {
+      if (code === 403 || lowerMsg.includes("permission_denied") || lowerMsg.includes("forbidden") || lowerMsg.includes("access not configured")) {
         return {
           valid: false,
           status: 403,
           reason: "permission_denied",
-          message: "API key không có quyền truy cập mô hình Gemini. Hãy bật quyền trên Google Cloud/AI Studio.",
+          message: "API key không có quyền truy cập Gemini API (Permission Denied). Hãy kiểm tra lại dự án trên Google Cloud.",
         };
       }
 
-      if (
-        statusNum === 429 ||
-        errorStr.includes("resource_exhausted") ||
-        errorStr.includes("quota") ||
-        errorStr.includes("rate limit")
-      ) {
+      if (code === 429 || lowerMsg.includes("quota") || lowerMsg.includes("resource_exhausted") || lowerMsg.includes("rate limit")) {
         return {
           valid: false,
           status: 429,
           reason: "quota_exceeded",
-          message: "API key đã vượt quá hạn mức sử dụng (Quota Exceeded). Vui lòng thử lại sau.",
+          message: "API key đã vượt quá hạn mức sử dụng (Quota Exceeded) của tài khoản.",
         };
       }
 
-      // Nếu là model not found, thử model tiếp theo trong vòng lặp
-      if (errorStr.includes("not found") || errorStr.includes("404")) {
-        continue;
-      }
+      return {
+        valid: false,
+        status: 400,
+        reason: "invalid_key",
+        message: `Google AI trả về lỗi: ${msg}`,
+      };
     }
+
+    return {
+      valid: false,
+      status: 500,
+      reason: "network_error",
+      message: "Không nhận được phản hồi hợp lệ từ máy chủ Google AI.",
+    };
+  } catch (err: any) {
+    logger.warn("Lỗi kết nối khi validate Google API Key:", err?.message);
+    return {
+      valid: false,
+      status: 500,
+      reason: "network_error",
+      message: `Lỗi kết nối mạng: ${err?.message || "Vui lòng kiểm tra lại kết nối internet."}`,
+    };
   }
-
-  logger.warn("Google AI connection error during key validation:", lastErrorDetail);
-
-  return {
-    valid: false,
-    status: 500,
-    reason: "network_error",
-    message: `Không thể kết nối đến máy chủ Google AI (${lastErrorDetail.slice(0, 100) || "Kiểm tra kết nối mạng hoặc thử lại"}).`,
-  };
 }

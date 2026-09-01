@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { GEMINI_CONFIG } from "./config";
+import { logger } from "../security/logger";
 
 export interface GeminiSolverOptions {
   aiClient: GoogleGenAI;
@@ -35,23 +36,51 @@ Yêu cầu: Hãy sửa lại lời giải thật chặt chẽ, tính toán chu�
     text: promptText,
   });
 
-  const response = await aiClient.models.generateContent({
-    model: GEMINI_CONFIG.generationModel,
-    contents: contents,
-    config: {
-      systemInstruction: systemInstruction,
-      temperature: GEMINI_CONFIG.temperature,
-      topP: GEMINI_CONFIG.topP,
-      maxOutputTokens: GEMINI_CONFIG.maxOutputTokens,
-    },
-  });
+  // Danh sách model ưu tiên từ cao xuống thấp để tự động fallback nếu model hiện tại không khả dụng
+  const candidateModels = [
+    GEMINI_CONFIG.generationModel,
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-2.0-flash-exp",
+  ];
 
-  const answerText = response.text || "";
-  if (!answerText.trim()) {
-    throw new Error("Không nhận được câu trả lời từ mô hình AI.");
+  let lastError: any = null;
+
+  for (const modelName of candidateModels) {
+    try {
+      const response = await aiClient.models.generateContent({
+        model: modelName,
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: GEMINI_CONFIG.temperature,
+          topP: GEMINI_CONFIG.topP,
+          maxOutputTokens: GEMINI_CONFIG.maxOutputTokens,
+        },
+      });
+
+      const answerText = response.text || "";
+      if (answerText.trim()) {
+        return answerText;
+      }
+    } catch (error: any) {
+      lastError = error;
+      const errStr = (error?.message || error?.toString() || "").toLowerCase();
+
+      // Nếu lỗi là 404 (model not found) -> thử model kế tiếp
+      if (errStr.includes("not found") || errStr.includes("404") || errStr.includes("not supported")) {
+        logger.warn(`Model ${modelName} không khả dụng cho key này, đang chuyển sang model tiếp theo trong danh sách.`);
+        continue;
+      }
+
+      // Nếu lỗi là 401 hoặc 429 hoặc lỗi khác -> throw luôn
+      throw error;
+    }
   }
 
-  return answerText;
+  throw lastError || new Error("Không thể nhận phản hồi từ bất kỳ mô hình Gemini nào.");
 }
 
 export async function generateMathSolution(options: {
