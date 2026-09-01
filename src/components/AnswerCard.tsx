@@ -204,9 +204,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ content, sources }) => {
                           <Info className="w-3.5 h-3.5 text-blue-500" />
                           <span>Đoạn trích tri thức chuẩn từ SGK/SBT:</span>
                         </div>
-                        <p className="italic bg-white p-2.5 rounded-xl border border-slate-200/80">
-                          &ldquo;{src.snippet}&rdquo;
-                        </p>
+                        <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+                          <MathRenderer
+                            content={`“${src.snippet}”`}
+                            className="text-xs text-slate-800 leading-relaxed font-serif"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
