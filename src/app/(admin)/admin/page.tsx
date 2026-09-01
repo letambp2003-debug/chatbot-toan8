@@ -17,14 +17,40 @@ import {
   Lock,
   Compass,
   CheckCheck,
+  Key,
+  Plus,
+  Trash2,
+  Sparkles,
 } from "lucide-react";
 import { CoverageReport } from "@/lib/ingestion/coverage";
 
+interface KeyPoolItem {
+  id: string;
+  label: string;
+  maskedKey: string;
+  addedAt: string;
+  isActive: boolean;
+  failCount: number;
+}
+
+interface KeyPoolSummary {
+  total: number;
+  activeCount: number;
+  keys: KeyPoolItem[];
+}
+
 export default function AdminDashboardPage() {
   const [coverage, setCoverage] = useState<CoverageReport | null>(null);
+  const [keyPool, setKeyPool] = useState<KeyPoolSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [ingesting, setIngesting] = useState(false);
   const [ingestMessage, setIngestMessage] = useState<string | null>(null);
+
+  // Form thêm API key mới cho học sinh
+  const [newKeyInput, setNewKeyInput] = useState("");
+  const [newKeyLabel, setNewKeyLabel] = useState("");
+  const [addingKey, setAddingKey] = useState(false);
+  const [keyMessage, setKeyMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
   const fetchCoverage = async () => {
     setLoading(true);
@@ -39,8 +65,19 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchKeyPool = async () => {
+    try {
+      const res = await fetch("/api/admin/keys");
+      const data = await res.json();
+      setKeyPool(data);
+    } catch (e) {
+      console.error("Lỗi lấy pool keys:", e);
+    }
+  };
+
   useEffect(() => {
     fetchCoverage();
+    fetchKeyPool();
   }, []);
 
   const handleRunIngestion = async () => {
@@ -59,6 +96,54 @@ export default function AdminDashboardPage() {
       setIngestMessage(e?.message || "Lỗi kết nối khi chạy Ingestion.");
     } finally {
       setIngesting(false);
+    }
+  };
+
+  const handleAddKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newKeyInput.trim()) return;
+
+    setAddingKey(true);
+    setKeyMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: newKeyInput.trim(), label: newKeyLabel.trim() }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setKeyMessage({ type: "success", text: data.message });
+        setNewKeyInput("");
+        setNewKeyLabel("");
+        if (data.summary) setKeyPool(data.summary);
+      } else {
+        setKeyMessage({ type: "error", text: data.message || "Không thể thêm key." });
+      }
+    } catch (err: any) {
+      setKeyMessage({ type: "error", text: err?.message || "Lỗi kết nối." });
+    } finally {
+      setAddingKey(false);
+    }
+  };
+
+  const handleDeleteKey = async (keyId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa API key này khỏi Pool hệ thống?")) return;
+
+    try {
+      const res = await fetch("/api/admin/keys", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyId }),
+      });
+      const data = await res.json();
+      if (data.success && data.summary) {
+        setKeyPool(data.summary);
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -93,7 +178,10 @@ export default function AdminDashboardPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchCoverage}
+            onClick={() => {
+              fetchCoverage();
+              fetchKeyPool();
+            }}
             disabled={loading}
             className="rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20 transition-colors"
           >
@@ -170,16 +258,119 @@ export default function AdminDashboardPage() {
 
         <div className="rounded-3xl border border-line bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold">Bảo mật & BYOK Session</span>
-            <Lock className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-bold">Pool Key Học Sinh</span>
+            <Key className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-black text-emerald-600">
-            AES-256-GCM
+            {keyPool ? `${keyPool.activeCount} Keys` : "2+ Keys"}
           </div>
           <div className="text-[11px] text-slate-500 mt-1 font-semibold">
-            TTL 8h · Zero Secret Leak
+            Tự động Round-Robin & Failover
           </div>
         </div>
+      </div>
+
+      {/* MỤC QUẢN LÝ POOL API KEY CHO HỌC SINH */}
+      <div className="rounded-3xl border border-line bg-white p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-emerald-600" />
+              <span>Quản Lý Pool API Key Mặc Định Cho Học Sinh (Ít nhất 2 Keys)</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Quản trị viên có thể nạp các API key cá nhân vào đây. Học sinh sẽ được tự động cấp key từ pool này để hỏi bài mà không bị bắt buộc phải nhập key riêng.
+            </p>
+          </div>
+
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Pool Sẵn Sàng: {keyPool ? keyPool.activeCount : 2} Keys</span>
+          </span>
+        </div>
+
+        {/* Danh sách Key hiện tại */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+          {keyPool?.keys.map((k) => (
+            <div
+              key={k.id}
+              className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-bold text-xs text-slate-900">{k.label}</span>
+                  <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                    Hoạt động
+                  </span>
+                </div>
+                <div className="text-xs font-mono text-slate-600 bg-white p-2 rounded-xl border border-slate-200/60 mb-2">
+                  {k.maskedKey}
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Thêm lúc: {new Date(k.addedAt).toLocaleDateString("vi-VN")}
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-200/60">
+                <span className="text-[10px] text-slate-500">Fail count: {k.failCount}</span>
+                {keyPool.keys.length > 1 && (
+                  <button
+                    onClick={() => handleDeleteKey(k.id)}
+                    className="p-1 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    title="Xóa key khỏi pool"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Form thêm key mới */}
+        <form onSubmit={handleAddKey} className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+          <div className="text-xs font-bold text-blue-900 mb-2 flex items-center gap-1.5">
+            <Plus className="w-4 h-4 text-blue-600" />
+            <span>Thêm API Key Mới Vào Pool Cho Học Sinh</span>
+          </div>
+
+          {keyMessage && (
+            <div
+              className={`mb-3 rounded-xl p-2.5 text-xs font-semibold ${
+                keyMessage.type === "success"
+                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                  : "bg-red-50 text-red-800 border border-red-200"
+              }`}
+            >
+              {keyMessage.text}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <input
+              type="text"
+              value={newKeyLabel}
+              onChange={(e) => setNewKeyLabel(e.target.value)}
+              placeholder="Tên gợi nhớ (VD: Key Admin #3)..."
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              value={newKeyInput}
+              onChange={(e) => setNewKeyInput(e.target.value)}
+              placeholder="Nhập Google AI API Key (AIzaSy...)..."
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            />
+            <button
+              type="submit"
+              disabled={addingKey || !newKeyInput.trim()}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-50 transition-all"
+            >
+              {addingKey ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              <span>{addingKey ? "Đang xác thực..." : "Thêm Vào Pool"}</span>
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Production Release Gate Overview */}

@@ -11,7 +11,8 @@ import { ChatMessage, LearningMode, LearningProgress } from "@/types/chat";
 import { BookSet } from "@/types/knowledge";
 
 export default function Home() {
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(true);
+  const [isCustomKey, setIsCustomKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [currentMode, setCurrentMode] = useState<LearningMode>("EXPLAIN");
   const [bookSet, setBookSet] = useState<BookSet>("KNTT");
@@ -28,20 +29,19 @@ export default function Home() {
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // 1. Kiểm tra trạng thái phiên kết nối từ HttpOnly cookie
-  useEffect(() => {
-    async function checkStatus() {
-      try {
-        const res = await fetch("/api/key/status");
-        const data = await res.json();
-        if (data.connected) {
-          setConnected(true);
-        }
-      } catch (err) {
-        console.error("Error checking session status:", err);
-      }
+  // 1. Kiểm tra trạng thái phiên kết nối từ HttpOnly cookie / System Default Pool
+  const checkStatus = async () => {
+    try {
+      const res = await fetch("/api/key/status");
+      const data = await res.json();
+      setConnected(Boolean(data.connected));
+      setIsCustomKey(Boolean(data.isCustomKey));
+    } catch (err) {
+      console.error("Error checking session status:", err);
     }
+  };
 
+  useEffect(() => {
     async function loadProgress() {
       try {
         const res = await fetch("/api/progress");
@@ -60,11 +60,6 @@ export default function Home() {
 
   // 2. Xử lý gửi câu hỏi
   const handleSend = async (text: string, imageFile?: File | null) => {
-    if (!connected) {
-      setKeyModalOpen(true);
-      return;
-    }
-
     let imageUrl: string | undefined;
     if (imageFile) {
       imageUrl = URL.createObjectURL(imageFile);
@@ -104,11 +99,12 @@ export default function Home() {
 
       if (res.status === 401) {
         setConnected(false);
+        setIsCustomKey(false);
         setKeyModalOpen(true);
         const errAssistantMsg: ChatMessage = {
           id: `assistant_${Date.now()}`,
           role: "assistant",
-          content: "Phiên Google AI đã hết hạn hoặc không hợp lệ. Em hãy kết nối lại API key nhé.",
+          content: "Phiên Google AI đã hết hạn hoặc không hợp lệ. Em có thể bấm Dùng Key Mặc Định hoặc kết nối lại API key nhé.",
           created_at: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, errAssistantMsg]);
@@ -151,18 +147,19 @@ export default function Home() {
     }
   };
 
-  // 3. Xử lý ngắt kết nối
+  // 3. Xử lý ngắt kết nối key riêng -> chuyển về dùng key hệ thống mặc định
   const handleDisconnect = async () => {
     try {
       await fetch("/api/key", { method: "DELETE" });
     } catch (err) {
       console.error("Disconnect error:", err);
     } finally {
-      setConnected(false);
+      setIsCustomKey(false);
+      setConnected(true);
       const noticeMsg: ChatMessage = {
         id: `assistant_${Date.now()}`,
         role: "assistant",
-        content: "Đã ngắt kết nối Google AI. Em cần kết nối lại API key trước khi tiếp tục đặt câu hỏi nhé.",
+        content: "Đã chuyển về sử dụng Google AI Key mặc định của hệ thống do Quản trị viên cung cấp.",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, noticeMsg]);
@@ -174,6 +171,7 @@ export default function Home() {
       {/* Topbar */}
       <Topbar
         connected={connected}
+        isCustomKey={isCustomKey}
         onOpenKeyModal={() => setKeyModalOpen(true)}
         onDisconnect={handleDisconnect}
         onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
@@ -220,7 +218,10 @@ export default function Home() {
       <KeyModal
         isOpen={keyModalOpen}
         onClose={() => setKeyModalOpen(false)}
-        onConnected={() => setConnected(true)}
+        onConnected={() => {
+          checkStatus();
+          setConnected(true);
+        }}
       />
 
       {/* Modal Dashboard Tiến độ & Phân tích lỗi */}

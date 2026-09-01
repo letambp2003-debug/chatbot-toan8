@@ -5,6 +5,7 @@ import { LearningMode } from "@/types/chat";
 import { BookSet } from "@/lib/knowledge/types";
 import { validateRequestOrigin } from "@/lib/security/origin_guard";
 import { logger } from "@/lib/security/logger";
+import { getNextSystemKey } from "@/lib/gemini/key_pool";
 
 export const maxDuration = 60;
 
@@ -27,21 +28,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Kiểm tra và giải mã User API Key từ HttpOnly Cookie (TTL 8h)
+    // 3. Xác định API Key: Ưu tiên Key cá nhân của học sinh (nếu có), fallback sang Pool Key mặc định của hệ thống
     const cookie = req.cookies.get(COOKIE_NAME);
-    if (!cookie?.value) {
-      return NextResponse.json(
-        { error: "Phiên Google AI chưa được kết nối hoặc đã hết hạn (TTL 8h). Em hãy kết nối lại API key nhé." },
-        { status: 401 }
-      );
-    }
+    let effectiveApiKey: string;
 
-    const decrypted = decryptApiKey(cookie.value);
-    if (!decrypted || !decrypted.key) {
-      return NextResponse.json(
-        { error: "Phiên làm việc không hợp lệ hoặc đã hết hạn. Vui lòng kết nối lại Google AI API key." },
-        { status: 401 }
-      );
+    if (cookie?.value) {
+      const decrypted = decryptApiKey(cookie.value);
+      if (decrypted && decrypted.key) {
+        effectiveApiKey = decrypted.key;
+        logger.info("Đang xử lý câu hỏi bằng Google AI Key cá nhân của học sinh.");
+      } else {
+        effectiveApiKey = getNextSystemKey();
+        logger.info("Key cá nhân hết hạn, tự động chuyển sang Pool AI Key hệ thống mặc định.");
+      }
+    } else {
+      // Học sinh chưa nhập key riêng -> Sử dụng trực tiếp Pool AI Key do Quản trị viên cung cấp
+      effectiveApiKey = getNextSystemKey();
+      logger.info("Học sinh dùng AI Key hệ thống mặc định do Quản trị viên cung cấp.");
     }
 
     // 4. Đọc dữ liệu câu hỏi từ client
@@ -78,7 +81,7 @@ export async function POST(req: NextRequest) {
       chapter,
       imageBase64,
       imageMimeType,
-      apiKey: decrypted.key,
+      apiKey: effectiveApiKey,
     });
 
     return NextResponse.json({

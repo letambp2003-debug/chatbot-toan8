@@ -34,19 +34,18 @@ export default function ConnectAiPage() {
   const [state, setState] = useState<ValidationState>("idle");
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [connected, setConnected] = useState(false);
+  const [isCustomKey, setIsCustomKey] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
 
   const checkStatus = async () => {
     try {
       const res = await fetch("/api/key/status");
       const data = await res.json();
-      if (data.connected) {
-        setConnected(true);
-        if (data.expiresAt) {
-          setExpiresAt(data.expiresAt);
-        }
+      setConnected(Boolean(data.connected));
+      setIsCustomKey(Boolean(data.isCustomKey));
+      if (data.expiresAt) {
+        setExpiresAt(data.expiresAt);
       } else {
-        setConnected(false);
         setExpiresAt(null);
       }
     } catch {
@@ -86,6 +85,7 @@ export default function ConnectAiPage() {
         setState("success");
         setFeedbackMessage(data.message || "Kết nối Google AI thành công! Phiên làm việc có hiệu lực trong 8 giờ.");
         setConnected(true);
+        setIsCustomKey(true);
         setApiKey("");
         await checkStatus();
       } else {
@@ -99,16 +99,28 @@ export default function ConnectAiPage() {
     }
   };
 
+  const handleUseDefaultKey = async () => {
+    try {
+      await fetch("/api/key", { method: "DELETE" });
+      setState("success");
+      setFeedbackMessage("Đã kích hoạt AI Key mặc định của hệ thống! Em có thể bắt đầu hỏi bài ngay.");
+      await checkStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleDisconnect = async () => {
     try {
       await fetch("/api/key", { method: "DELETE" });
     } catch (e) {
       console.error(e);
     } finally {
-      setConnected(false);
+      setIsCustomKey(false);
       setExpiresAt(null);
       setState("idle");
-      setFeedbackMessage("Đã ngắt kết nối phiên làm việc Google AI.");
+      setFeedbackMessage("Đã chuyển về sử dụng Google AI Key mặc định của hệ thống.");
+      await checkStatus();
     }
   };
 
@@ -145,46 +157,50 @@ export default function ConnectAiPage() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
-                Kết nối Google AI API Key
+                Cấu Hình Google AI API Key
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                Bring Your Own Key (BYOK) · Mã hóa AES-256-GCM · TTL 8 giờ
+                Pool Key Mặc Định Hệ Thống hoặc Key Riêng Cá Nhân (BYOK)
               </p>
             </div>
           </div>
 
-          {/* Current Connection Status Banner */}
-          {connected ? (
-            <div className="my-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-sm font-black text-emerald-900">AI Đã Kết Nối Sẵn Sàng</span>
-                </div>
+          {/* Banner thông báo Key mặc định */}
+          <div className="my-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-sm font-black text-emerald-900">
+                  {isCustomKey ? "Đang Dùng Key Cá Nhân (8h)" : "Đang Dùng Key Mặc Định Của Hệ Thống"}
+                </span>
+              </div>
+
+              {isCustomKey ? (
                 <button
                   onClick={handleDisconnect}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>Ngắt kết nối</span>
+                  <span>Dùng Key Mặc Định</span>
                 </button>
-              </div>
-
-              {expiresAt && (
-                <div className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Thời gian phiên còn lại: <strong>{getRemainingTime()}</strong></span>
-                </div>
+              ) : (
+                <Link
+                  href="/"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Vào Học Ngay</span>
+                </Link>
               )}
             </div>
-          ) : (
-            <div className="my-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5 flex items-start gap-2.5 text-xs text-amber-800">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>
-                Chatbot yêu cầu bạn kết nối Google AI API key của chính bạn trước khi bắt đầu giải toán hoặc luyện tập.
-              </span>
-            </div>
-          )}
+
+            {isCustomKey && expiresAt && (
+              <div className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Thời gian phiên còn lại: <strong>{getRemainingTime()}</strong></span>
+              </div>
+            )}
+          </div>
 
           {/* Alert Status Feedback */}
           {state !== "idle" && (
@@ -214,14 +230,14 @@ export default function ConnectAiPage() {
           <form onSubmit={handleValidate} className="space-y-4 mt-4">
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700">Google AI API Key</label>
+                <label className="text-xs font-bold text-slate-700">Nhập Key Riêng Cá Nhân (Tùy chọn)</label>
                 <a
                   href="https://aistudio.google.com/app/apikey"
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:underline"
                 >
-                  <span>Lấy key miễn phí tại Google AI Studio</span>
+                  <span>Lấy key tại Google AI Studio</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
@@ -231,7 +247,7 @@ export default function ConnectAiPage() {
                   type={showKey ? "text" : "password"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Nhập Google AI API key..."
+                  placeholder="Nhập Google AI API key cá nhân (AIzaSy...)..."
                   autoComplete="off"
                   disabled={state === "validating"}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-100 font-mono transition-all pr-12"
@@ -251,27 +267,28 @@ export default function ConnectAiPage() {
             <div className="rounded-2xl bg-slate-50 p-3.5 text-xs text-slate-600 border border-slate-200/80 space-y-1.5">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <ShieldCheck className="w-4 h-4 text-blue-600" />
-                <span>Cam kết an toàn tuyệt đối:</span>
+                <span>Cam kết bảo mật:</span>
               </div>
               <ul className="list-disc pl-5 space-y-1 text-[11px] text-slate-500 leading-relaxed">
-                <li>Không lưu vào localStorage, sessionStorage hay IndexedDB.</li>
-                <li>Không lưu vào logs máy chủ hay analytics.</li>
+                <li>Không lưu vào localStorage hay sessionStorage.</li>
                 <li>Mã hóa <strong>AES-256-GCM</strong> và lưu trong HttpOnly Secure Cookie với TTL 8 giờ.</li>
+                <li>Nếu không nhập key riêng, học sinh vẫn có thể dùng bình thường nhờ Pool Key do Quản trị viên cấp.</li>
               </ul>
             </div>
 
-            <div className="pt-2 flex items-center justify-between gap-3">
-              <Link
-                href="/"
-                className="rounded-2xl border border-slate-200 px-5 py-3 text-xs sm:text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors text-center"
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleUseDefaultKey}
+                className="w-full sm:w-auto rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-3 text-xs sm:text-sm font-bold text-emerald-800 hover:bg-emerald-100 transition-colors text-center"
               >
-                Trở về
-              </Link>
+                Dùng Key Hệ Thống Mặc Định
+              </button>
 
               <button
                 type="submit"
                 disabled={state === "validating" || !apiKey.trim()}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-xs sm:text-sm font-black text-white shadow-lg shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-xs sm:text-sm font-black text-white shadow-lg shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 {state === "validating" ? (
                   <>
@@ -281,7 +298,7 @@ export default function ConnectAiPage() {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Kiểm tra kết nối</span>
+                    <span>Lưu Key Cá Nhân</span>
                   </>
                 )}
               </button>

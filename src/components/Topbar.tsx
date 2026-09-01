@@ -2,10 +2,11 @@
 
 import React from "react";
 import Link from "next/link";
-import { Menu, Sparkles, LogOut, Key } from "lucide-react";
+import { Menu, Sparkles, LogOut, Key, ShieldCheck } from "lucide-react";
 
 interface TopbarProps {
   connected: boolean;
+  isCustomKey?: boolean;
   onOpenKeyModal: () => void;
   onDisconnect: () => void;
   onToggleSidebar: () => void;
@@ -13,6 +14,7 @@ interface TopbarProps {
 
 export const Topbar: React.FC<TopbarProps> = ({
   connected,
+  isCustomKey = false,
   onOpenKeyModal,
   onDisconnect,
   onToggleSidebar,
@@ -47,47 +49,45 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Actions */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Link tới trang chuyên biệt /connect-ai */}
+        {/* Link tới trang quản trị Admin */}
         <Link
-          href="/connect-ai"
+          href="/admin"
           className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
-          title="Trang quản lý API Key"
+          title="Quản trị Tri thức & Pool API Key"
         >
-          <Key className="w-3.5 h-3.5 text-slate-500" />
-          <span>Cấu hình Key</span>
+          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+          <span>Quản trị QA</span>
         </Link>
 
         {/* Status Pill */}
         <div
-          className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border ${
-            connected
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : "bg-amber-50 text-amber-700 border-amber-200"
-          }`}
+          onClick={onOpenKeyModal}
+          className="cursor-pointer inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 transition-colors"
+          title="Bấm để thay đổi cấu hình API Key"
         >
-          <span
-            className={`h-2 w-2 rounded-full ${
-              connected ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
-            }`}
-          />
-          <span>{connected ? "AI đã kết nối" : "Chưa kết nối AI"}</span>
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>
+            {isCustomKey ? "AI Key Cá Nhân (8h)" : "AI Key Hệ Thống (Mặc định)"}
+          </span>
         </div>
 
-        {connected ? (
+        {isCustomKey ? (
           <button
             onClick={onDisconnect}
             className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs sm:text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
+            title="Ngắt kết nối key cá nhân, chuyển về dùng key hệ thống"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Ngắt kết nối</span>
+            <span className="hidden sm:inline">Dùng Key Mặc Định</span>
           </button>
         ) : (
           <button
             onClick={onOpenKeyModal}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs sm:text-sm font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+            title="Nhập API Key cá nhân của bạn"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Kết nối AI</span>
+            <Key className="w-3.5 h-3.5 text-slate-500" />
+            <span className="hidden sm:inline">Dùng Key Riêng</span>
           </button>
         )}
       </div>
