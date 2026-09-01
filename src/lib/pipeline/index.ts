@@ -141,6 +141,7 @@ export async function executeMathPipeline(
       imageMimeType,
       feedback: retryFeedback,
       aiClient,
+      retrievedChunks: ragResult.chunks,
     });
 
     finalAnswer = solverOutput.text;

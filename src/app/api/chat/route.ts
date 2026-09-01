@@ -92,9 +92,10 @@ export async function POST(req: NextRequest) {
       success: pipelineOutput.success,
     });
   } catch (error: any) {
-    logger.error("Chat API pipeline error:", error?.message);
+    console.error("Chat API pipeline error details:", error);
+    logger.error("Chat API pipeline error:", error?.message || String(error));
     return NextResponse.json(
-      { error: "Đã xảy ra sự cố trong quá trình xử lý câu hỏi. Vui lòng thử lại sau." },
+      { error: `Đã xảy ra sự cố: ${error?.message || "Vui lòng thử lại sau."}` },
       { status: 500 }
     );
   }
